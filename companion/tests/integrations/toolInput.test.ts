@@ -77,22 +77,25 @@ async function swapToLink(): Promise<void> {
 }
 
 describe("team mode: <target> runs against a private snapshot (#1857)", () => {
-  it("a swap of the case name after the check changes nothing the tool reads", async () => {
-    const { runner, seen } = yaraRunner(async () => swapToLink());
-    const res = await runToolAgainstFile({
-      cfg: yara(),
-      runner,
-      targetPath: target(),
-      workDir,
-      scope: scope(),
-      teamMode: true,
-    });
-    expect(seen.bytes).toBe("THIS-CASE");
-    expect(seen.handed).not.toBe(target());
-    expect(inside(caseDir, seen.handed)).toBe(false);
-    expect(res.provenance.input).toEqual({ sha256: sha("THIS-CASE"), bytes: 9 });
-    expect(describeToolRun(res.provenance)).toContain(`input sha256:${sha("THIS-CASE")} (9 bytes)`);
-  });
+  it.skipIf(process.platform === "win32")(
+    "a swap of the case name after the check changes nothing the tool reads",
+    async () => {
+      const { runner, seen } = yaraRunner(async () => swapToLink());
+      const res = await runToolAgainstFile({
+        cfg: yara(),
+        runner,
+        targetPath: target(),
+        workDir,
+        scope: scope(),
+        teamMode: true,
+      });
+      expect(seen.bytes).toBe("THIS-CASE");
+      expect(seen.handed).not.toBe(target());
+      expect(inside(caseDir, seen.handed)).toBe(false);
+      expect(res.provenance.input).toEqual({ sha256: sha("THIS-CASE"), bytes: 9 });
+      expect(describeToolRun(res.provenance)).toContain(`input sha256:${sha("THIS-CASE")} (9 bytes)`);
+    },
+  );
 
   it("maps the staged path in the output back to the case path, so events name the case file", async () => {
     const { runner } = yaraRunner();
@@ -159,14 +162,24 @@ describe("team mode: <target> runs against a private snapshot (#1857)", () => {
 
 describe("every mode: the target is judged at hand-over (#1857)", () => {
   for (const teamMode of [false, true]) {
-    it(`refuses a target that is already a link (teamMode=${teamMode}), tool never runs`, async () => {
-      await swapToLink();
-      const { runner, seen } = yaraRunner();
-      await expect(
-        runToolAgainstFile({ cfg: yara(), runner, targetPath: target(), workDir, scope: scope(), teamMode }),
-      ).rejects.toBeInstanceOf(CaseFileRefusedError);
-      expect(seen.runs).toBe(0);
-    });
+    it.skipIf(process.platform === "win32")(
+      `refuses a target that is already a link (teamMode=${teamMode}), tool never runs`,
+      async () => {
+        await swapToLink();
+        const { runner, seen } = yaraRunner();
+        await expect(
+          runToolAgainstFile({
+            cfg: yara(),
+            runner,
+            targetPath: target(),
+            workDir,
+            scope: scope(),
+            teamMode,
+          }),
+        ).rejects.toBeInstanceOf(CaseFileRefusedError);
+        expect(seen.runs).toBe(0);
+      },
+    );
 
     it(`refuses a hard link (teamMode=${teamMode})`, async () => {
       await rm(target());
@@ -200,53 +213,59 @@ describe("every mode: the target is judged at hand-over (#1857)", () => {
 });
 
 describe("<targetdir> copies from the judged handle (#1857)", () => {
-  it("never follows a link: a linked target is refused, the tool never runs", async () => {
-    await swapToLink();
-    let runs = 0;
-    const runner: ToolRunner = async () => {
-      runs++;
-      return { stdout: "x", stderr: "", code: 0 };
-    };
-    await expect(
-      runToolAgainstFile({
+  it.skipIf(process.platform === "win32")(
+    "never follows a link: a linked target is refused, the tool never runs",
+    async () => {
+      await swapToLink();
+      let runs = 0;
+      const runner: ToolRunner = async () => {
+        runs++;
+        return { stdout: "x", stderr: "", code: 0 };
+      };
+      await expect(
+        runToolAgainstFile({
+          cfg: velo(),
+          runner,
+          targetPath: target(),
+          workDir,
+          scope: scope(),
+          teamMode: false,
+        }),
+      ).rejects.toBeInstanceOf(CaseFileRefusedError);
+      expect(runs).toBe(0);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "hands a folder holding only the checked bytes under the original name, outside the case",
+    async () => {
+      let dirSeen = "";
+      let files: string[] = [];
+      let bytes = "";
+      const runner: ToolRunner = async (_bin, args, opts) => {
+        if (args.includes("--version")) return { stdout: "0.7", stderr: "", code: 0 };
+        dirSeen = args[args.indexOf("--ROOT") + 1];
+        await swapToLink();
+        files = await readdir(dirSeen);
+        bytes = await readFile(join(dirSeen, "a.bin"), "utf8");
+        await writeFile(opts.stdoutFile as string, '[{"a":1}]');
+        return { stdout: "", stderr: "", code: 0 };
+      };
+      const res = await runToolAgainstFile({
         cfg: velo(),
         runner,
         targetPath: target(),
         workDir,
         scope: scope(),
         teamMode: false,
-      }),
-    ).rejects.toBeInstanceOf(CaseFileRefusedError);
-    expect(runs).toBe(0);
-  });
-
-  it("hands a folder holding only the checked bytes under the original name, outside the case", async () => {
-    let dirSeen = "";
-    let files: string[] = [];
-    let bytes = "";
-    const runner: ToolRunner = async (_bin, args, opts) => {
-      if (args.includes("--version")) return { stdout: "0.7", stderr: "", code: 0 };
-      dirSeen = args[args.indexOf("--ROOT") + 1];
-      await swapToLink();
-      files = await readdir(dirSeen);
-      bytes = await readFile(join(dirSeen, "a.bin"), "utf8");
-      await writeFile(opts.stdoutFile as string, '[{"a":1}]');
-      return { stdout: "", stderr: "", code: 0 };
-    };
-    const res = await runToolAgainstFile({
-      cfg: velo(),
-      runner,
-      targetPath: target(),
-      workDir,
-      scope: scope(),
-      teamMode: false,
-    });
-    expect(files).toEqual(["a.bin"]);
-    expect(bytes).toBe("THIS-CASE");
-    expect(inside(caseDir, dirSeen)).toBe(false);
-    expect(res.provenance.input?.sha256).toBe(sha("THIS-CASE"));
-    expect(await readdir(workDir)).toEqual([]);
-  });
+      });
+      expect(files).toEqual(["a.bin"]);
+      expect(bytes).toBe("THIS-CASE");
+      expect(inside(caseDir, dirSeen)).toBe(false);
+      expect(res.provenance.input?.sha256).toBe(sha("THIS-CASE"));
+      expect(await readdir(workDir)).toEqual([]);
+    },
+  );
 
   it("a tool with both placeholders gets one snapshot for both", async () => {
     const cfg: ToolConfig = { ...velo(), id: "custom_both", runArgs: "--file <target> --root <targetdir>" };

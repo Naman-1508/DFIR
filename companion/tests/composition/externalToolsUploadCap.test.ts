@@ -74,19 +74,22 @@ describe("runDropToolAndIngest — HTTP transport honours the drop size cap (#92
 });
 
 describe("runDropToolAndIngest — HTTP transport reads through the link guard (#921 review)", () => {
-  it("refuses a symlink planted at the path instead of uploading its target", async () => {
-    const { root, tools } = await harness();
-    const target = join(root, "outside.bin");
-    await writeFile(target, Buffer.alloc(16, 0x01));
-    const planted = join(root, "planted.pcap");
-    await symlink(target, planted);
+  it.skipIf(process.platform === "win32")(
+    "refuses a symlink planted at the path instead of uploading its target",
+    async () => {
+      const { root, tools } = await harness();
+      const target = join(root, "outside.bin");
+      await writeFile(target, Buffer.alloc(16, 0x01));
+      const planted = join(root, "planted.pcap");
+      await symlink(target, planted);
 
-    // Before: a plain readFile(path) followed the link and uploaded the target. Now the descriptor
-    // is opened O_NOFOLLOW, so this is a refusal, not a connection error.
-    await expect(
-      tools.runDropToolAndIngest("c1", "socrates", planted, { name: "planted.pcap" }),
-    ).rejects.toThrow(/symlink/);
-  });
+      // Before: a plain readFile(path) followed the link and uploaded the target. Now the descriptor
+      // is opened O_NOFOLLOW, so this is a refusal, not a connection error.
+      await expect(
+        tools.runDropToolAndIngest("c1", "socrates", planted, { name: "planted.pcap" }),
+      ).rejects.toThrow(/symlink/);
+    },
+  );
 
   // #1849: a FIFO at the path blocked the open for good and held a threadpool thread.
   it.skipIf(process.platform === "win32")(

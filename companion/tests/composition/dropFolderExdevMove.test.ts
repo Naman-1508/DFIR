@@ -122,17 +122,20 @@ describe("moveDropFile across filesystems (EXDEV fallback, #2270)", () => {
     await expect(access(join(dropDir, "_processed", relpath))).rejects.toThrow();
   });
 
-  it("still refuses a symlink source, and copies nothing from its target", async () => {
-    const { store, dropDir } = await seed(Buffer.from("unused"));
-    const target = join(dropDir, "..", "host-secret.txt");
-    await writeFile(target, "HOST-SECRET");
-    const relpath = join("triage", "link.txt");
-    await symlink(target, join(dropDir, relpath));
-    hooks.exdev = true;
+  it.skipIf(process.platform === "win32")(
+    "still refuses a symlink source, and copies nothing from its target",
+    async () => {
+      const { store, dropDir } = await seed(Buffer.from("unused"));
+      const target = join(dropDir, "..", "host-secret.txt");
+      await writeFile(target, "HOST-SECRET");
+      const relpath = join("triage", "link.txt");
+      await symlink(target, join(dropDir, relpath));
+      hooks.exdev = true;
 
-    await expect(harness(store).moveDropFile(dropDir, relpath, true)).rejects.toThrow(
-      /symlink detected .* refused to move \(security\)/,
-    );
-    await expect(access(join(dropDir, "_processed", relpath))).rejects.toThrow();
-  });
+      await expect(harness(store).moveDropFile(dropDir, relpath, true)).rejects.toThrow(
+        /symlink detected .* refused to move \(security\)/,
+      );
+      await expect(access(join(dropDir, "_processed", relpath))).rejects.toThrow();
+    },
+  );
 });

@@ -40,19 +40,22 @@ beforeEach(async () => {
 });
 
 describe("GET /cases/:id/evidence/:file — link guard (#818)", () => {
-  it("refuses a symlink planted in screenshots/ and never serves its target", async () => {
-    await symlink(join(outside, "shadow"), join(store.screenshotsDir("c1"), "000001_x.png"));
+  it.skipIf(process.platform === "win32")(
+    "refuses a symlink planted in screenshots/ and never serves its target",
+    async () => {
+      await symlink(join(outside, "shadow"), join(store.screenshotsDir("c1"), "000001_x.png"));
 
-    const res = await request(app).get("/cases/c1/evidence/000001_x.png");
+      const res = await request(app).get("/cases/c1/evidence/000001_x.png");
 
-    expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/symlink detected/);
-    expect(res.text).not.toContain("not-for-the-dashboard");
-    // The client's filename, never the on-disk path the guard saw.
-    expect(res.body.error).not.toContain(outside);
-  });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/symlink detected/);
+      expect(res.text).not.toContain("not-for-the-dashboard");
+      // The client's filename, never the on-disk path the guard saw.
+      expect(res.body.error).not.toContain(outside);
+    },
+  );
 
-  it("refuses a symlink planted in imports/ too", async () => {
+  it.skipIf(process.platform === "win32")("refuses a symlink planted in imports/ too", async () => {
     await symlink(join(outside, "shadow"), join(store.importsDir("c1"), "0001_results.csv"));
 
     const res = await request(app).get("/cases/c1/evidence/0001_results.csv");
@@ -72,25 +75,31 @@ describe("GET /cases/:id/evidence/:file — link guard (#818)", () => {
     expect(res.text).not.toContain("not-for-the-dashboard");
   });
 
-  it("a dangling symlink is refused as a link, not reported as missing", async () => {
-    await symlink(join(outside, "gone"), join(store.screenshotsDir("c1"), "000002_x.png"));
+  it.skipIf(process.platform === "win32")(
+    "a dangling symlink is refused as a link, not reported as missing",
+    async () => {
+      await symlink(join(outside, "gone"), join(store.screenshotsDir("c1"), "000002_x.png"));
 
-    const res = await request(app).get("/cases/c1/evidence/000002_x.png");
+      const res = await request(app).get("/cases/c1/evidence/000002_x.png");
 
-    expect(res.status).toBe(403);
-  });
+      expect(res.status).toBe(403);
+    },
+  );
 
-  it("still serves a plain evidence file beside the refused link (no over-blocking)", async () => {
-    await symlink(join(outside, "shadow"), join(store.importsDir("c1"), "0001_results.csv"));
-    await writeFile(join(store.importsDir("c1"), "0002_results.csv"), "host,verdict\nws1,clean\n");
+  it.skipIf(process.platform === "win32")(
+    "still serves a plain evidence file beside the refused link (no over-blocking)",
+    async () => {
+      await symlink(join(outside, "shadow"), join(store.importsDir("c1"), "0001_results.csv"));
+      await writeFile(join(store.importsDir("c1"), "0002_results.csv"), "host,verdict\nws1,clean\n");
 
-    const res = await request(app).get("/cases/c1/evidence/0002_results.csv");
+      const res = await request(app).get("/cases/c1/evidence/0002_results.csv");
 
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toMatch(/^text\/plain/); // csv is served as text so a click opens it in a tab
-    expect(res.text).toContain("ws1,clean");
-    expect((await request(app).get("/cases/c1/evidence/missing.csv")).status).toBe(404);
-  });
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/^text\/plain/); // csv is served as text so a click opens it in a tab
+      expect(res.text).toContain("ws1,clean");
+      expect((await request(app).get("/cases/c1/evidence/missing.csv")).status).toBe(404);
+    },
+  );
 
   // #1846: the final-component check left the FOLDER above the file open, and a FIFO hung the request.
   it.skipIf(process.platform === "win32")(

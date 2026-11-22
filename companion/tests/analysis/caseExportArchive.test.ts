@@ -181,10 +181,12 @@ describe("exportEncryptedCase — single-generation snapshot (#3)", () => {
     await exportEncryptedCase(store, "SNAP-4", PASSWORD);
     expect(existsSync(stagingRoot) ? await readdir(stagingRoot) : []).toEqual([]);
 
-    // A symlink planted in the case makes the export throw mid-build; the snapshot must still go.
-    await symlink("/etc/hostname", join(store.screenshotsDir("SNAP-4"), "loot"));
-    await expect(exportEncryptedCase(store, "SNAP-4", PASSWORD)).rejects.toThrow(/symlink/);
-    expect(existsSync(stagingRoot) ? await readdir(stagingRoot) : []).toEqual([]);
+    if (process.platform !== "win32") {
+      // A symlink planted in the case makes the export throw mid-build; the snapshot must still go.
+      await symlink("/etc/hostname", join(store.screenshotsDir("SNAP-4"), "loot"));
+      await expect(exportEncryptedCase(store, "SNAP-4", PASSWORD)).rejects.toThrow(/symlink/);
+      expect(existsSync(stagingRoot) ? await readdir(stagingRoot) : []).toEqual([]);
+    }
   });
 });
 
@@ -195,15 +197,18 @@ describe("exportEncryptedCase — symlink/hardlink rejection (#247)", () => {
   // nlink count reveals it. These drive the REAL exportEncryptedCase end to end (not the private
   // walkDir helper in isolation), planting a real symlink/hardlink on disk.
 
-  it("refuses to export a case containing a symlink to a file outside the case directory", async () => {
-    const store = await harness();
-    await seedCase(store, "INC-SYM");
-    const secretFile = join(await mkdtemp(join(tmpdir(), "dfir-cea-secret-")), "shadow.txt");
-    await writeFile(secretFile, "TOPSECRET-HOST-FILE-CONTENTS", "utf8");
-    await symlink(secretFile, join(store.caseDir("INC-SYM"), "screenshots", "loot"));
+  it.skipIf(process.platform === "win32")(
+    "refuses to export a case containing a symlink to a file outside the case directory",
+    async () => {
+      const store = await harness();
+      await seedCase(store, "INC-SYM");
+      const secretFile = join(await mkdtemp(join(tmpdir(), "dfir-cea-secret-")), "shadow.txt");
+      await writeFile(secretFile, "TOPSECRET-HOST-FILE-CONTENTS", "utf8");
+      await symlink(secretFile, join(store.caseDir("INC-SYM"), "screenshots", "loot"));
 
-    await expect(exportEncryptedCase(store, "INC-SYM", PASSWORD)).rejects.toThrow(/symlink/i);
-  });
+      await expect(exportEncryptedCase(store, "INC-SYM", PASSWORD)).rejects.toThrow(/symlink/i);
+    },
+  );
 
   it("refuses to export a case containing a hardlink to a file outside the case directory", async () => {
     const store = await harness();

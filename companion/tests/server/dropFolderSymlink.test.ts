@@ -123,22 +123,26 @@ async function runDropSweep(
 }
 
 describe("drop-folder auto-importer — symlink/hardlink rejection (#243)", () => {
-  it("never reads a symlink's target content into the case, but still imports a normal file", async () => {
-    const { caseDropDir, haystack } = await runDropSweep("c1", "drop", async (dropDir, secretFile) => {
-      await symlink(secretFile, join(dropDir, "innocuous.json"));
-    });
-    expect(haystack).not.toContain("TOPSECRET-HOST-FILE-CONTENTS");
-    expect(haystack).toContain("Bad"); // the legit Velociraptor detection DID import
-    // The symlink itself is never even recognized by listDropFiles, so it's left exactly where
-    // it was dropped — never moved to _processed/ or _failed/.
-    const remaining = await readdir(caseDropDir);
-    expect(remaining).toContain("innocuous.json");
-    // #2788: refused, but no longer silently — drop-log.txt names it once.
-    const dropLog = await readFile(join(caseDropDir, "drop-log.txt"), "utf8");
-    expect(
-      dropLog.match(/SKIPPED\s+innocuous\.json\s+— symbolic link — not imported \(security\)/g),
-    ).toHaveLength(1);
-  }, 30_000);
+  it.skipIf(process.platform === "win32")(
+    "never reads a symlink's target content into the case, but still imports a normal file",
+    async () => {
+      const { caseDropDir, haystack } = await runDropSweep("c1", "drop", async (dropDir, secretFile) => {
+        await symlink(secretFile, join(dropDir, "innocuous.json"));
+      });
+      expect(haystack).not.toContain("TOPSECRET-HOST-FILE-CONTENTS");
+      expect(haystack).toContain("Bad"); // the legit Velociraptor detection DID import
+      // The symlink itself is never even recognized by listDropFiles, so it's left exactly where
+      // it was dropped — never moved to _processed/ or _failed/.
+      const remaining = await readdir(caseDropDir);
+      expect(remaining).toContain("innocuous.json");
+      // #2788: refused, but no longer silently — drop-log.txt names it once.
+      const dropLog = await readFile(join(caseDropDir, "drop-log.txt"), "utf8");
+      expect(
+        dropLog.match(/SKIPPED\s+innocuous\.json\s+— symbolic link — not imported \(security\)/g),
+      ).toHaveLength(1);
+    },
+    30_000,
+  );
 
   it("never reads a hardlink's target content into the case, but still imports a normal file", async () => {
     const { caseDropDir, haystack } = await runDropSweep("c2", "drop", async (dropDir, secretFile) => {

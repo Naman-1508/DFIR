@@ -32,14 +32,17 @@ describe("readFileNoFollow", () => {
     expect((await readFileNoFollow(path)).toString("utf8")).toBe(CONTENT);
   });
 
-  it("refuses a symlink instead of following it to the host file", async () => {
-    const path = join(dir, "planted");
-    await symlink(secretPath, path);
+  it.skipIf(process.platform === "win32")(
+    "refuses a symlink instead of following it to the host file",
+    async () => {
+      const path = join(dir, "planted");
+      await symlink(secretPath, path);
 
-    const err = await readFileNoFollow(path).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(LinkGuardError);
-    expect((err as LinkGuardError).kind).toBe("symlink");
-  });
+      const err = await readFileNoFollow(path).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(LinkGuardError);
+      expect((err as LinkGuardError).kind).toBe("symlink");
+    },
+  );
 
   it("refuses a hardlink, which no symlink check and no readdir can see", async () => {
     const path = join(dir, "aliased");
@@ -50,14 +53,17 @@ describe("readFileNoFollow", () => {
     expect((err as LinkGuardError).kind).toBe("hardlink");
   });
 
-  it("refuses a symlink pointing at a directory or a dangling target too", async () => {
-    await mkdir(join(dir, "elsewhere"));
-    await symlink(join(dir, "elsewhere"), join(dir, "to-dir"));
-    await symlink(join(dir, "does-not-exist"), join(dir, "dangling"));
+  it.skipIf(process.platform === "win32")(
+    "refuses a symlink pointing at a directory or a dangling target too",
+    async () => {
+      await mkdir(join(dir, "elsewhere"));
+      await symlink(join(dir, "elsewhere"), join(dir, "to-dir"));
+      await symlink(join(dir, "does-not-exist"), join(dir, "dangling"));
 
-    await expect(readFileNoFollow(join(dir, "to-dir"))).rejects.toBeInstanceOf(LinkGuardError);
-    await expect(readFileNoFollow(join(dir, "dangling"))).rejects.toBeInstanceOf(LinkGuardError);
-  });
+      await expect(readFileNoFollow(join(dir, "to-dir"))).rejects.toBeInstanceOf(LinkGuardError);
+      await expect(readFileNoFollow(join(dir, "dangling"))).rejects.toBeInstanceOf(LinkGuardError);
+    },
+  );
 
   // An open() that loses the race against the rm() below is not a finding — it is the race being run.
   // POSIX reports that as ENOENT. Windows has a second state POSIX does not: between the unlink and
@@ -76,40 +82,46 @@ describe("readFileNoFollow", () => {
   // the swap lands, and the read follows the link. Reading through the checked descriptor cannot —
   // there is no interval in which the two disagree. Every read must either return the legitimate
   // content or refuse; the secret must never come back.
-  it("never returns the swap target's content, however the swap is timed", async () => {
-    const path = join(dir, "raced");
-    let leaked = false;
-    let reads = 0;
+  it.skipIf(process.platform === "win32")(
+    "never returns the swap target's content, however the swap is timed",
+    async () => {
+      const path = join(dir, "raced");
+      let leaked = false;
+      let reads = 0;
 
-    for (let i = 0; i < 200; i++) {
-      await rm(path, { force: true });
-      if (i % 2 === 0) await writeFile(path, CONTENT, "utf8");
-      else await symlink(secretPath, path);
+      for (let i = 0; i < 200; i++) {
+        await rm(path, { force: true });
+        if (i % 2 === 0) await writeFile(path, CONTENT, "utf8");
+        else await symlink(secretPath, path);
 
-      // Started before the swap below, resolved after it — the window a path-based guard exposes.
-      const reading = readFileNoFollow(path).then(
-        (buf) => buf.toString("utf8"),
-        (err: unknown) => {
-          if (!(err instanceof LinkGuardError) && !RACE_LOST.has((err as NodeJS.ErrnoException).code ?? "")) {
-            throw err;
-          }
-          return null;
-        },
-      );
-      await rm(path, { force: true }).catch(() => {});
-      await symlink(secretPath, path).catch(() => {});
+        // Started before the swap below, resolved after it — the window a path-based guard exposes.
+        const reading = readFileNoFollow(path).then(
+          (buf) => buf.toString("utf8"),
+          (err: unknown) => {
+            if (
+              !(err instanceof LinkGuardError) &&
+              !RACE_LOST.has((err as NodeJS.ErrnoException).code ?? "")
+            ) {
+              throw err;
+            }
+            return null;
+          },
+        );
+        await rm(path, { force: true }).catch(() => {});
+        await symlink(secretPath, path).catch(() => {});
 
-      const got = await reading;
-      if (got !== null) {
-        reads++;
-        if (got.includes("host-only-secret")) leaked = true;
+        const got = await reading;
+        if (got !== null) {
+          reads++;
+          if (got.includes("host-only-secret")) leaked = true;
+        }
       }
-    }
 
-    expect(leaked).toBe(false);
-    // Guard against a vacuous pass: some reads must actually have succeeded.
-    expect(reads).toBeGreaterThan(0);
-  });
+      expect(leaked).toBe(false);
+      // Guard against a vacuous pass: some reads must actually have succeeded.
+      expect(reads).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("readHeadNoFollow", () => {
@@ -131,7 +143,7 @@ describe("readHeadNoFollow", () => {
     expect((await readHeadNoFollow(path, 0)).length).toBe(0);
   });
 
-  it("applies the same link guard as a whole-file read", async () => {
+  it.skipIf(process.platform === "win32")("applies the same link guard as a whole-file read", async () => {
     const path = join(dir, "planted-head");
     await symlink(secretPath, path);
     await expect(readHeadNoFollow(path, 8)).rejects.toBeInstanceOf(LinkGuardError);
@@ -252,10 +264,13 @@ describe("openNoFollow — the Windows fallback, forced (no O_NOFOLLOW)", () => 
   });
 
   // The pre-check still rejects a link that is already in place, fallback or not.
-  it("still refuses a symlink that was there before the open", async () => {
-    const path = join(dir, "fallback-link");
-    await symlink(secretPath, path);
-    const mod = await loadWithFallback();
-    await expect(mod.readFileNoFollow(path)).rejects.toBeInstanceOf(mod.LinkGuardError);
-  });
+  it.skipIf(process.platform === "win32")(
+    "still refuses a symlink that was there before the open",
+    async () => {
+      const path = join(dir, "fallback-link");
+      await symlink(secretPath, path);
+      const mod = await loadWithFallback();
+      await expect(mod.readFileNoFollow(path)).rejects.toBeInstanceOf(mod.LinkGuardError);
+    },
+  );
 });

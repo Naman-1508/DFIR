@@ -91,11 +91,14 @@ describe("runDropToolAndIngest refuses a drop relpath that escapes the drop fold
     ).rejects.toThrow(/outside the drop folder/);
   });
 
-  it("still refuses a symlink at the final component — containment does not replace the link guard", async () => {
-    const { tools, dropDir, outside } = await harness();
-    await symlink(outside, join(dropDir, "triage", "planted.pcap"));
-    await expect(runPending(tools, dropDir, join("triage", "planted.pcap"))).rejects.toThrow(/symlink/);
-  });
+  it.skipIf(process.platform === "win32")(
+    "still refuses a symlink at the final component — containment does not replace the link guard",
+    async () => {
+      const { tools, dropDir, outside } = await harness();
+      await symlink(outside, join(dropDir, "triage", "planted.pcap"));
+      await expect(runPending(tools, dropDir, join("triage", "planted.pcap"))).rejects.toThrow(/symlink/);
+    },
+  );
 
   it("still reaches the upload for an ordinary dropped file — the error is the connection, not the guard", async () => {
     const { tools, dropDir } = await harness();
