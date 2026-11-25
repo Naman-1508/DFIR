@@ -235,15 +235,17 @@ function mergeIocCandidates(dbPath, lowered, aliasIds) {
   const db = openDatabase(dbPath);
   try {
     const columns = "SELECT row_id, ordinal, version, payload FROM entities ";
-    const byId = "json_extract(payload, '$.id') IN (SELECT value FROM json_each(?1))";
+    const byId = "json_extract(payload, '$.id') IN (SELECT value FROM json_each(?))";
+    const aliasJson = JSON.stringify(aliasIds || []);
+    const loweredJson = JSON.stringify(lowered || []);
     const rows = db.prepare(
-      columns + "INDEXED BY entities_id_idx WHERE kind='iocs' AND entity_id IN (SELECT value FROM json_each(?1)) AND " + byId +
+      columns + "INDEXED BY entities_id_idx WHERE kind='iocs' AND entity_id IN (SELECT value FROM json_each(?)) AND " + byId +
       " UNION " + columns + "INDEXED BY entities_ioc_badid_idx WHERE " + IOC_BAD_ID_WHERE + " AND " + byId +
       " UNION " + columns + "INDEXED BY entities_ioc_value_idx WHERE kind='iocs' AND " +
-      "lower(json_extract(payload, '$.value')) IN (SELECT value FROM json_each(?2))" +
+      "lower(json_extract(payload, '$.value')) IN (SELECT value FROM json_each(?))" +
       " UNION " + columns + "INDEXED BY entities_ioc_odd_idx WHERE " + IOC_ODD_VALUE_WHERE +
       " ORDER BY ordinal"
-    ).all(JSON.stringify(aliasIds || []), JSON.stringify(lowered || []));
+    ).all(aliasJson, aliasJson, aliasJson, loweredJson);
     return {
       rows: rows.map((r) => ({ rowId: Number(r.row_id), ordinal: Number(r.ordinal), version: Number(r.version), payload: r.payload })),
       nextSeq: nextIocSeq(db) + 1,

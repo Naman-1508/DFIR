@@ -360,8 +360,8 @@ function readProtectedTagIds(db, excludeAuthorPrefix) {
   const prefix = typeof excludeAuthorPrefix === "string" ? excludeAuthorPrefix : "";
   const ids = new Set(db.prepare(
     "SELECT target_id FROM tags WHERE target_type='event' AND target_id <> '' " +
-    "AND (?1 = '' OR substr(author, 1, length(?1)) <> ?1)"
-  ).all(prefix).map((row) => row.target_id));
+    "AND (? = '' OR substr(author, 1, length(?)) <> ?)"
+  ).all(prefix, prefix, prefix).map((row) => row.target_id));
   for (const row of db.prepare("SELECT target_id FROM tags_protect_pending WHERE boot=? AND target_id <> ''").all(TAGS_WORKER_BOOT)) {
     ids.add(row.target_id);
   }

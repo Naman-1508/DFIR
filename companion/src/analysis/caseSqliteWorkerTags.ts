@@ -304,10 +304,10 @@ function tagsRemoveByPrefix(dbPath, tagsPath, prefix) {
   if (!db) return { count: 0, release: [] };
   try {
     return withTransaction(db, () => {
-      const match = "substr(author, 1, length(?1)) = ?1";
+      const match = "substr(author, 1, length(?)) = ?";
       const targets = db.prepare("SELECT target_id FROM tags WHERE " + match + " AND " + TAG_ANALYST_EVENT_SQL + " ORDER BY seq")
-        .all(prefix).map((row) => row.target_id);
-      const count = Number(db.prepare("DELETE FROM tags WHERE " + match).run(prefix).changes);
+        .all(prefix, prefix).map((row) => row.target_id);
+      const count = Number(db.prepare("DELETE FROM tags WHERE " + match).run(prefix, prefix).changes);
       return { count, release: count ? unreferencedTargets(db, targets) : [] };
     });
   } finally {
